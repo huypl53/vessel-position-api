@@ -1,4 +1,5 @@
 import Source from "../Source";
+import { default as fetch } from "node-fetch";
 
 class ADSBExchange extends Source {
   parseLocation = async function (result: any) {
@@ -17,7 +18,7 @@ class ADSBExchange extends Source {
 
   getLocation = async (icao: string) => {
     /// <reference lib="dom" />
-    const fetch = (await import("node-fetch")).default;
+    // const fetch = (await import("node-fetch")).default;
     const response = await fetch(
       `https://globe.adsbexchange.com/data/traces/${icao.slice(
         -2,
@@ -92,7 +93,7 @@ class ADSBExchange extends Source {
 
   getLocationFull = async (icao: string) => {
     /// <reference lib="dom" />
-    const fetch = (await import("node-fetch")).default;
+    // const fetch = (await import("node-fetch")).default;
     const response = await fetch(
       `https://globe.adsbexchange.com/data/traces/${icao.slice(
         -2,

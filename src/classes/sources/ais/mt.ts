@@ -82,7 +82,7 @@ class Marinetraffic extends Source {
         new Promise((_resolve, reject) =>
           setTimeout(() => {
             reject(new Error("Timeout waiting for vessel position"));
-          }, 35000),
+          }, 65000),
         ),
       ]);
     } catch (err) {
