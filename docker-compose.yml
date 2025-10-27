@@ -1,5 +1,50 @@
 version: '3.8'
+
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: vessel-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: vessel_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vessel-network
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: vessel-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - vessel-network
+
+  # Position API Service
   position-api:
     build: .
     container_name: position-api
@@ -7,13 +52,36 @@ services:
       - "5001:5001"
     environment:
       - NODE_ENV=production
-      - PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-    # If you need to persist data, add volumes here
-    # volumes:
-    #   - .:/app
-    #   - /app/node_modules
-    # If your app needs to access host network (rarely needed)
-    # network_mode: host
+      - PORT=5001
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/vessel_db?schema=public
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_USE_SSL=false
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=vessel-images
+      - PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
+      - LOG_LEVEL=info
+      - LOG_DIR=/app/logs
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
     cap_add:
       - SYS_ADMIN
+    networks:
+      - vessel-network
+
+volumes:
+  postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  vessel-network:
+    driver: bridge

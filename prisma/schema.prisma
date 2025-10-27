@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Vessel identity and details
+model Vessel {
+  id          String   @id @default(uuid())
+  mmsi        String?  @unique
+  imo         String?  @unique
+  name        String?
+  callsign    String?
+  flag        String?
+
+  // Vessel type
+  vesselType  String?
+  vesselTypeCode Int?
+
+  // Vessel dimensions
+  length      Float?
+  width       Float?
+  draught     Float?
+  deadweight  Int?
+  grossTonnage Int?
+
+  // Build information
+  yearBuilt   Int?
+  builder     String?
+
+  // Current status
+  status      String?
+  destination String?
+  eta         DateTime?
+
+  // Metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastCrawled DateTime @default(now())
+
+  // Relations
+  positions   VesselPosition[]
+  images      VesselImage[]
+
+  @@index([mmsi])
+  @@index([imo])
+  @@index([lastCrawled])
+}
+
+// Vessel position tracking
+model VesselPosition {
+  id          String   @id @default(uuid())
+  vesselId    String
+  vessel      Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+
+  latitude    Float
+  longitude   Float
+  course      Float?
+  speed       Float?
+  heading     Int?
+
+  timestamp   DateTime
+  source      String   // e.g., "MarineTraffic", "MyShipTracking"
+  sourceType  String   // e.g., "AIS", "ADSB"
+
+  // Metadata
+  createdAt   DateTime @default(now())
+
+  @@index([vesselId])
+  @@index([timestamp])
+}
+
+// Vessel images stored in MinIO
+model VesselImage {
+  id          String   @id @default(uuid())
+  vesselId    String
+  vessel      Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+
+  // MinIO storage info
+  bucketName  String
+  objectKey   String
+  url         String?  // Public URL if available
+
+  // Image metadata
+  imageType   String?  // e.g., "main", "gallery", "thumbnail"
+  width       Int?
+  height      Int?
+  fileSize    Int?
+  mimeType    String?
+
+  // Source
+  sourceUrl   String?
+
+  // Metadata
+  createdAt   DateTime @default(now())
+
+  @@index([vesselId])
+}

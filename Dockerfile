@@ -5,28 +5,50 @@ FROM --platform=linux/amd64 ghcr.io/puppeteer/puppeteer:latest
 # Switch to root to copy files and set permissions
 USER root
 
-
 # Set the working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if present)
-COPY package*.json ./
+# Install additional dependencies
+RUN apt-get update && apt-get install -y \
+    chromium \
+    postgresql-client \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application code
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy application code
 COPY . .
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+# Build TypeScript
+RUN npm run build
+
+# Create logs directory
+RUN mkdir -p /app/logs
 
 # Set ownership to pptruser
 RUN chown -R pptruser:pptruser /app
-RUN apt update && apt install -y chromium
 
-# Switch to pptruser for npm install and running the app
+# Switch to pptruser for running the app
 USER pptruser
 
-# Install dependencies (including puppeteer)
-RUN npm install
+# Expose port
+EXPOSE 5001
 
-# Expose port if your app runs a server (optional)
-# EXPOSE 3000
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:5001/health || exit 1
 
-# Default command (adjust as needed)
-CMD ["npm", "start"]
+# Start script
+COPY --chown=pptruser:pptruser docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

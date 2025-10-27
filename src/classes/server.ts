@@ -4,6 +4,11 @@ import path from "path";
 import { api } from "../legacy/api";
 import { areaApi } from "../legacy/area";
 import ADSBexchange from "./sources/adsb/adsbe";
+import vesselRoutes from "../routes/vessel.routes";
+import { getDatabaseService } from "../services/database.service";
+import { getStorageService } from "../services/storage.service";
+import logger, { apiLogger } from "../services/logger.service";
+
 class Server {
   app: any;
   server: any;
@@ -11,28 +16,75 @@ class Server {
     this.init(port);
   }
 
-  init(port: number) {
+  async init(port: number) {
     this.app = express();
     this.app.set("port", port);
+
+    // Middleware
     this.app.use(
       cors({
         origin: "*",
       }),
     );
+    this.app.use(express.json());
+
+    // Initialize services
+    await this.initializeServices();
+
+    // Routes
     this.app.get("/", (_request: any, response: any) => {
       response.sendFile(path.join(__dirname, "/../static/index.html"));
     });
+
+    // Health check
+    this.app.get("/health", async (_request: any, response: any) => {
+      const dbService = getDatabaseService();
+      const dbHealthy = await dbService.healthCheck();
+
+      response.json({
+        status: dbHealthy ? "healthy" : "unhealthy",
+        database: dbHealthy ? "connected" : "disconnected",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // API routes
+    this.app.use("/api/vessels", vesselRoutes);
+
     this.loadLegacyRoutes();
     this.loadRoutes();
+
     this.server = this.app.listen(this.app.get("port"), () => {
-      console.log("Node this.appp is running on port", this.app.get("port"));
+      logger.info(`Server running on port ${this.app.get("port")}`);
     });
   }
 
-  close() {
+  async initializeServices() {
+    try {
+      // Initialize database
+      const dbService = getDatabaseService();
+      await dbService.connect();
+      apiLogger.info("Database connected");
+
+      // Initialize storage
+      const storageService = getStorageService();
+      await storageService.initialize();
+      apiLogger.info("Storage initialized");
+    } catch (error) {
+      apiLogger.error("Failed to initialize services", { error });
+      throw error;
+    }
+  }
+
+  async close() {
     if (this.server) {
       this.server.close();
-      console.log("Server closed");
+
+      // Cleanup services
+      const dbService = getDatabaseService();
+      await dbService.disconnect();
+
+      logger.info("Server closed");
     }
   }
 

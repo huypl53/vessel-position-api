@@ -1,10 +1,6 @@
 import fetch from "node-fetch";
-import { chromium } from "playwright-extra";
-import StealthPlugin from "playwright-extra-plugin-stealth";
+import { getBrowserPool } from "./BrowserPool";
 import type { Browser, BrowserContext, Page } from "playwright-core";
-
-// Use stealth plugin to bypass bot detection
-chromium.use(StealthPlugin());
 
 class Source {
   /**
@@ -41,31 +37,14 @@ class Source {
 
   async getBrowser(): Promise<Browser> {
     if (this.browser) {
-      console.log("[PLAYWRIGHT] Returning existing browser instance");
       return this.browser;
     }
 
-    console.log("[PLAYWRIGHT] Launching browser with stealth plugin");
-    const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
-    const launchOptions: any = {
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-      ],
-      ...(executablePath ? { executablePath } : {}),
-    };
+    const browserPool = getBrowserPool();
+    const { browser, context } = await browserPool.getBrowser();
 
-    console.log(JSON.stringify(launchOptions, null, 2));
-
-    try {
-      this.browser = await chromium.launch(launchOptions);
-      console.log("[PLAYWRIGHT] Browser launched successfully with stealth");
-    } catch (err) {
-      console.error("[PLAYWRIGHT] Failed to launch browser:", err);
-      throw err;
-    }
+    this.browser = browser;
+    this.context = context;
 
     return this.browser;
   }
@@ -75,52 +54,38 @@ class Source {
       return this.context;
     }
 
-    const browser = await this.getBrowser();
-    this.context = await browser.newContext({
-      viewport: {
-        width: 2458,
-        height: 1302,
-      },
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36",
-    });
-
-    // Add initialization script to define __name property
-    await this.context.addInitScript(`
-      Object.defineProperty(window, "__name", {
-        get: function() { return "https://www.marinetraffic.com"; },
-        configurable: true,
-      });
-    `);
-
-    return this.context;
+    // Browser pool creates context automatically
+    await this.getBrowser();
+    return this.context!;
   }
 
   async newPage(): Promise<Page> {
     const context = await this.getContext();
     const page = await context.newPage();
 
-    // Listen to console messages from the browser
-    page.on("console", (msg) => {
-      console.log(`[BROWSER ${msg.type().toUpperCase()}]:`, msg.text());
-    });
-
-    // Listen to page errors
-    page.on("pageerror", (error) => {
-      console.error("[BROWSER ERROR]:", error.message);
-    });
+    // Add random delays to mimic human behavior
+    await page.addInitScript(`
+      // Random mouse movements
+      setInterval(() => {
+        const x = Math.floor(Math.random() * window.innerWidth);
+        const y = Math.floor(Math.random() * window.innerHeight);
+        const event = new MouseEvent('mousemove', {
+          clientX: x,
+          clientY: y
+        });
+        document.dispatchEvent(event);
+      }, 5000 + Math.random() * 5000);
+    `);
 
     return page;
   }
 
   async closeBrowser(): Promise<void> {
-    if (this.context) {
-      await this.context.close();
-      this.context = null;
-    }
     if (this.browser) {
-      await this.browser.close();
+      const browserPool = getBrowserPool();
+      await browserPool.releaseBrowser(this.browser);
       this.browser = null;
+      this.context = null;
     }
   }
 
