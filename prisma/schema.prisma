@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Vessel {
+  id              String         @id @default(uuid())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  name            String?
+  mmsi            String?        @unique
+  imo             String?        @unique
+  callSign        String?
+  flag            String?
+  type            String?
+  subType         String?
+  lengthMeters    Float?
+  breadthMeters   Float?
+  draughtMeters   Float?
+  deadweightTons  Float?
+  grossTonnage    Float?
+  yearBuilt       Int?
+  lastKnownLat    Float?
+  lastKnownLon    Float?
+  lastKnownAt     DateTime?
+  source          String?
+  crawlerMetadata Json?
+  images          VesselImage[]
+
+  @@index([name])
+  @@index([mmsi])
+  @@index([imo])
+}
+
+model VesselImage {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  vesselId    String
+  vessel      Vessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
+  bucket      String
+  objectName  String
+  originalUrl String?
+  contentType String?
+  width       Int?
+  height      Int?
+  sizeBytes   Int?
+  checksum    String?
+}

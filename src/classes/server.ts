@@ -4,6 +4,23 @@ import path from "path";
 import { api } from "../legacy/api";
 import { areaApi } from "../legacy/area";
 import ADSBexchange from "./sources/adsb/adsbe";
+import vesselService, { detectIdentifierType as detectIdType } from "../services/vesselService";
+import logger from "../lib/logger";
+
+function parseBoolean(value: any): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["true", "1", "yes", "y"].includes(value.toLowerCase());
+  }
+  return false;
+}
+
+function normalizeIdentifierType(value: any): "mmsi" | "imo" | undefined {
+  if (value === "mmsi" || value === "imo") {
+    return value;
+  }
+  return undefined;
+}
 class Server {
   app: any;
   server: any;
@@ -25,14 +42,17 @@ class Server {
     this.loadLegacyRoutes();
     this.loadRoutes();
     this.server = this.app.listen(this.app.get("port"), () => {
-      console.log("Node this.appp is running on port", this.app.get("port"));
+      logger.info(
+        { port: this.app.get("port") },
+        "API server is listening",
+      );
     });
   }
 
   close() {
     if (this.server) {
       this.server.close();
-      console.log("Server closed");
+      logger.info("Server closed");
     }
   }
 
@@ -59,16 +79,53 @@ class Server {
     this.app.get(
       "/adsb/adsbe/:icao/location/latest",
       async (req: any, res: any) => {
-        console.log(req.params.icao);
+        logger.debug({ icao: req.params.icao }, "ADS-B lookup request");
         const adsbe = new ADSBexchange();
         const location = await adsbe.getLocation(req.params.icao);
-        console.log(location);
+        logger.debug({ location }, "ADS-B response");
         res.send({
           error: null,
           data: location,
         });
       },
     );
+    this.app.get("/vessels/:identifier", async (req: any, res: any) => {
+      try {
+        const identifier = req.params.identifier;
+        const type =
+          normalizeIdentifierType(req.query.type) ??
+          detectIdType(identifier);
+        const forceRefresh = parseBoolean(req.query.force ?? req.query.refresh);
+
+        logger.info(
+          { identifier, type, forceRefresh },
+          "Vessel lookup requested",
+        );
+
+        const detail = await vesselService.getVessel({
+          identifier,
+          type,
+          forceRefresh,
+        });
+
+        res.json({
+          error: null,
+          data: detail,
+        });
+      } catch (error) {
+        logger.error(
+          { err: error },
+          "Failed to resolve vessel details",
+        );
+        res.status(500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to fetch vessel details",
+          data: null,
+        });
+      }
+    });
   }
 
   loadLegacyRoutes() {

@@ -2,6 +2,8 @@ import fetch from "node-fetch";
 import { chromium } from "playwright-extra";
 import StealthPlugin from "playwright-extra-plugin-stealth";
 import type { Browser, BrowserContext, Page } from "playwright-core";
+import logger from "../../lib/logger";
+import { randomUserAgent } from "../../utils/userAgents";
 
 // Use stealth plugin to bypass bot detection
 chromium.use(StealthPlugin());
@@ -32,20 +34,18 @@ class Source {
   }
 
   private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
 
   constructor() {
     this.browser = null;
-    this.context = null;
   }
 
   async getBrowser(): Promise<Browser> {
     if (this.browser) {
-      console.log("[PLAYWRIGHT] Returning existing browser instance");
+      logger.debug("[PLAYWRIGHT] Returning existing browser instance");
       return this.browser;
     }
 
-    console.log("[PLAYWRIGHT] Launching browser with stealth plugin");
+    logger.info("[PLAYWRIGHT] Launching browser with stealth plugin");
     const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
     const launchOptions: any = {
       headless: true,
@@ -57,67 +57,89 @@ class Source {
       ...(executablePath ? { executablePath } : {}),
     };
 
-    console.log(JSON.stringify(launchOptions, null, 2));
+    logger.debug({ launchOptions }, "Launching Playwright with options");
 
     try {
       this.browser = await chromium.launch(launchOptions);
-      console.log("[PLAYWRIGHT] Browser launched successfully with stealth");
+      logger.info("[PLAYWRIGHT] Browser launched successfully with stealth");
     } catch (err) {
-      console.error("[PLAYWRIGHT] Failed to launch browser:", err);
+      logger.error({ err }, "[PLAYWRIGHT] Failed to launch browser");
       throw err;
     }
 
     return this.browser;
   }
 
-  async getContext(): Promise<BrowserContext> {
-    if (this.context) {
-      return this.context;
-    }
-
+  private async createIsolatedContext(): Promise<BrowserContext> {
     const browser = await this.getBrowser();
-    this.context = await browser.newContext({
+    const userAgent = randomUserAgent();
+    const viewport = {
+      width: 1200 + Math.floor(Math.random() * 400),
+      height: 720 + Math.floor(Math.random() * 360),
+    };
+
+    const context = await browser.newContext({
       viewport: {
-        width: 2458,
-        height: 1302,
+        width: viewport.width,
+        height: viewport.height,
       },
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36",
+      userAgent,
+      locale: "en-US",
+      timezoneId: "UTC",
+      permissions: [],
     });
 
     // Add initialization script to define __name property
-    await this.context.addInitScript(`
+    await context.addInitScript(`
       Object.defineProperty(window, "__name", {
         get: function() { return "https://www.marinetraffic.com"; },
         configurable: true,
       });
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+      window.chrome = { runtime: {} };
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [1, 2, 3, 4, 5],
+      });
     `);
 
-    return this.context;
+    logger.debug(
+      { userAgent, viewport },
+      "[PLAYWRIGHT] Created isolated browser context",
+    );
+
+    return context;
   }
 
   async newPage(): Promise<Page> {
-    const context = await this.getContext();
+    const context = await this.createIsolatedContext();
     const page = await context.newPage();
+
+    page.on("close", async () => {
+      await context.close();
+    });
 
     // Listen to console messages from the browser
     page.on("console", (msg) => {
-      console.log(`[BROWSER ${msg.type().toUpperCase()}]:`, msg.text());
+      logger.debug(
+        { type: msg.type(), text: msg.text() },
+        "[BROWSER] Console",
+      );
     });
 
     // Listen to page errors
     page.on("pageerror", (error) => {
-      console.error("[BROWSER ERROR]:", error.message);
+      logger.error({ err: error }, "[BROWSER] Page error");
     });
 
     return page;
   }
 
   async closeBrowser(): Promise<void> {
-    if (this.context) {
-      await this.context.close();
-      this.context = null;
-    }
     if (this.browser) {
       await this.browser.close();
       this.browser = null;

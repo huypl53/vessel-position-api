@@ -1,4 +1,5 @@
 import Source from "../Source";
+import logger from "../../../lib/logger";
 
 class Marinetraffic extends Source {
   parseLocation = async function (result: any) {
@@ -15,7 +16,7 @@ class Marinetraffic extends Source {
   };
 
   getLocation = async (mmsi: number) => {
-    console.log(mmsi);
+    logger.debug({ mmsi }, "Starting MarineTraffic location lookup");
 
     const url =
       "https://www.marinetraffic.com/en/ais/details/ships/mmsi:" + mmsi;
@@ -60,9 +61,16 @@ class Marinetraffic extends Source {
                 originalResponse: parsedData,
               };
               console.log("Parsed vessel position:", parsedData);
+              logger.debug(
+                { url: reqUrl, parsedData },
+                "Parsed vessel position response",
+              );
               resolve(result);
             } catch (err) {
-              console.error("Failed to parse vessel position response:", err);
+              logger.error(
+                { err, url: reqUrl },
+                "Failed to parse vessel position response",
+              );
               reject(err);
             }
           });
@@ -72,7 +80,7 @@ class Marinetraffic extends Source {
 
     await page.goto(url, { waitUntil: "domcontentloaded" });
     const finalUrl = page.url();
-    console.log("Redirected to:", finalUrl);
+    logger.debug({ finalUrl }, "MarineTraffic redirected URL");
 
     // Wait for the vessel position or timeout after 35 seconds
     let result = null;
@@ -86,7 +94,10 @@ class Marinetraffic extends Source {
         ),
       ]);
     } catch (err) {
-      console.error("Error or timeout while waiting for vessel position:", err);
+      logger.error(
+        { err },
+        "Error or timeout while waiting for vessel position",
+      );
     }
 
     await browser.close();

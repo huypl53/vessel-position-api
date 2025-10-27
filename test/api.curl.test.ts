@@ -1,11 +1,11 @@
-import Server from "../src/classes/server";
 import dotenv from "dotenv";
 import http from "http";
 import https from "https";
 
 dotenv.config();
+const RUN_CURL_TESTS = process.env.RUN_CURL_TESTS === "true";
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
-const serverInstance = new Server(PORT);
+let serverInstance: { close: () => void } | null = null;
 const API_URL = process.env.API_URL ?? "http://localhost:" + PORT;
 
 async function fetchUrl(
@@ -45,9 +45,18 @@ const tests: Array<[string, string]> = [
   // ['/legacy/getVesselsInPort/Hamburg', 'Legacy: Get vessels in port']
 ];
 
-describe("API endpoint integration tests", () => {
+const describeFn = RUN_CURL_TESTS ? describe : describe.skip;
+
+describeFn("API endpoint integration tests", () => {
+  beforeAll(async () => {
+    if (RUN_CURL_TESTS) {
+      const { default: Server } = await import("../src/classes/server");
+      serverInstance = new Server(PORT);
+    }
+  });
+
   afterAll(() => {
-    serverInstance.close();
+    serverInstance?.close();
   });
 
   tests.forEach(([path, desc]) => {
