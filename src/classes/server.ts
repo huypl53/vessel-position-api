@@ -4,6 +4,7 @@ import path from "path";
 import { api } from "../legacy/api";
 import { areaApi } from "../legacy/area";
 import ADSBexchange from "./sources/adsb/adsbe";
+import VesselFinder from "./sources/ais/vf";
 class Server {
   app: any;
   server: any;
@@ -67,6 +68,46 @@ class Server {
           error: null,
           data: location,
         });
+      },
+    );
+
+    // VesselFinder routes
+    this.app.get("/ais/vf/:mmsi/details", async (req: any, res: any) => {
+      try {
+        console.log(`[VF] Fetching details for MMSI: ${req.params.mmsi}`);
+        const vf = new VesselFinder();
+        const details = await vf.getVesselDetails(req.params.mmsi);
+        res.send({
+          error: null,
+          data: details,
+        });
+      } catch (error: any) {
+        console.error("[VF] Error:", error);
+        res.send({
+          error: error?.message || "Unknown error",
+          data: null,
+        });
+      }
+    });
+
+    this.app.get(
+      "/ais/vf/:mmsi/location/latest",
+      async (req: any, res: any) => {
+        try {
+          console.log(`[VF] Fetching location for MMSI: ${req.params.mmsi}`);
+          const vf = new VesselFinder();
+          const location = await vf.getLocation(req.params.mmsi);
+          res.send({
+            error: null,
+            data: location,
+          });
+        } catch (error: any) {
+          console.error("[VF] Error:", error);
+          res.send({
+            error: error?.message || "Unknown error",
+            data: null,
+          });
+        }
       },
     );
   }
