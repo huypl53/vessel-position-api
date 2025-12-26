@@ -13,6 +13,7 @@ interface VesselDetails {
   yearBuilt?: number;
   grossTonnage?: number;
   deadweight?: number;
+  imageUrl?: string;
   source: "VesselFinder";
   source_type: "AIS";
   raw?: any;
@@ -167,6 +168,24 @@ class VesselFinder extends Source {
       extracted.yearBuilt = parseInt(yearMatch[1]);
     }
 
+    // Extract vessel image URL
+    // Pattern: https://static.vesselfinder.net/ship-photo/{IMO}-{MMSI}-{hash}/{version}
+    // Placeholder image: cool-ship2@2.png (no real photo)
+    const imageMatch = html.match(
+      /data-src="(https:\/\/static\.vesselfinder\.net\/ship-photo\/[^"]+)"/i,
+    );
+    if (imageMatch && !imageMatch[1].includes("cool-ship")) {
+      (extracted as any).imageUrl = imageMatch[1];
+    } else {
+      // Try main-photo src
+      const mainPhotoMatch = html.match(
+        /class="main-photo[^"]*"[^>]*src="(https:\/\/static\.vesselfinder\.net\/ship-photo\/[^"]+)"/i,
+      );
+      if (mainPhotoMatch && !mainPhotoMatch[1].includes("cool-ship")) {
+        (extracted as any).imageUrl = mainPhotoMatch[1];
+      }
+    }
+
     // Extract from JavaScript variables as fallback
     // Example: var vu_imo=9895898;var MMSI=533132788
     if (!extracted.imo) {
@@ -295,6 +314,7 @@ class VesselFinder extends Source {
         yearBuilt: extracted.yearBuilt,
         grossTonnage: extracted.grossTonnage,
         deadweight: extracted.deadweight,
+        imageUrl: (extracted as any).imageUrl,
         source: "VesselFinder",
         source_type: "AIS",
         raw: extracted,
